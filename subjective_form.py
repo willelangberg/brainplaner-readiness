@@ -10,8 +10,8 @@ load_dotenv("config/.env")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# Connect to Supabase
-sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Initialize sb to None; will attempt to create it after checking envs
+sb = None
 
 # Streamlit page setup
 st.set_page_config(page_title="Brain Readiness", page_icon="🧠", layout="centered")
@@ -24,15 +24,36 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Connection check UI (attempt to create client only if env vars exist)
+st.markdown("### 🔍 Connection Check")
+
+if not SUPABASE_URL:
+    st.error("❌ SUPABASE_URL is missing.")
+elif not SUPABASE_KEY:
+    st.error("❌ SUPABASE_KEY is missing.")
+else:
+    st.info("Connecting to Supabase...")
+    try:
+        sb = create_client(str(SUPABASE_URL).strip(), str(SUPABASE_KEY).strip())
+        st.success("✅ Supabase connection established successfully!")
+    except Exception as e:
+        sb = None
+        st.error(f"⚠️ Supabase connection failed: {e}")
+
 # --- Optional: show yesterday's Oura sleep score (if available) ---
 try:
     from datetime import date, timedelta
     yesterday = str(date.today() - timedelta(days=1))
-    sleep = sb.table("oura_daily_sleep").select("*").eq("day", yesterday).execute().data
-    if sleep:
-        score = sleep[0]["sleep_score"]
-        st.metric("Yesterday's Oura Sleep Score", score)
-except Exception as e:
+
+    if sb:
+        sleep = sb.table("oura_daily_sleep").select("*").eq("day", yesterday).execute().data
+        if sleep:
+            score = sleep[0].get("sleep_score")
+            st.metric("Yesterday's Oura Sleep Score", score)
+    else:
+        # If there's no client, just silently skip Oura fetch (caption already shown above)
+        pass
+except Exception:
     st.caption("Oura data not available.")
 
 # --- Daily rating form ---
@@ -49,17 +70,20 @@ sleep_quality = st.slider("Sleep Quality (0=bad, 10=good)", 0, 10, 5)
 comment = st.text_input("Notes (optional)")
 
 if st.button("Save"):
-    try:
-        sb.table("subjective_daily_ratings").upsert({
-            "date": str(today),
-            "fatigue": fatigue,
-            "motivation": motivation,
-            "focus": focus,
-            "mood": mood,
-            "stress": stress,
-            "sleep_quality": sleep_quality,
-            "comment": comment
-        }).execute()
-        st.success("✅ Saved to Supabase!")
-    except Exception as e:
-        st.error(f"Failed to upload: {e}")
+    if not sb:
+        st.error("Supabase client not available. Check the connection above and ensure SUPABASE_URL and SUPABASE_KEY are set.")
+    else:
+        try:
+            sb.table("subjective_daily_ratings").upsert({
+                "date": str(today),
+                "fatigue": fatigue,
+                "motivation": motivation,
+                "focus": focus,
+                "mood": mood,
+                "stress": stress,
+                "sleep_quality": sleep_quality,
+                "comment": comment
+            }).execute()
+            st.success("✅ Saved to Supabase!")
+        except Exception as e:
+            st.error(f"Failed to upload: {e}")
