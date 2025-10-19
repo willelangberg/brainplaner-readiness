@@ -70,20 +70,25 @@ sleep_quality = st.slider("Sleep Quality (0=bad, 10=good)", 0, 10, 5)
 comment = st.text_input("Notes (optional)")
 
 if st.button("Save"):
-    if not sb:
-        st.error("Supabase client not available. Check the connection above and ensure SUPABASE_URL and SUPABASE_KEY are set.")
-    else:
-        try:
-            sb.table("subjective_daily_ratings").upsert({
-                "date": str(today),
-                "fatigue": fatigue,
-                "motivation": motivation,
-                "focus": focus,
-                "mood": mood,
-                "stress": stress,
-                "sleep_quality": sleep_quality,
-                "comment": comment
-            }).execute()
+    try:
+        payload = {
+            "date": str(today),
+            "fatigue": fatigue,
+            "motivation": motivation,
+            "focus": focus,
+            "mood": mood,
+            "stress": stress,
+            "sleep_quality": sleep_quality,
+            "comment": comment,
+        }
+
+        resp = sb.table("subjective_ratings").insert(payload).execute()
+
+        # Optional: show what came back
+        if hasattr(resp, "data") and resp.data:
             st.success("✅ Saved to Supabase!")
-        except Exception as e:
-            st.error(f"Failed to upload: {e}")
+        else:
+            st.warning(f"⚠️ Insert returned no data: {resp}")
+    except Exception as e:
+        st.error(f"Failed to upload: {e}")
+
